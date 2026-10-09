@@ -1,0 +1,243 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  STUDENT
+  INSTRUCTOR
+  ADMIN
+
+  @@map("user_role")
+}
+
+enum ExamStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  ENDED
+
+  @@map("exam_status")
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String   @db.VarChar(255)
+  email        String   @unique @db.VarChar(255)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  role         UserRole @default(STUDENT)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  examsCreated     Exam[]        @relation("ExamCreator")
+  questionsCreated Question[]    @relation("QuestionCreator")
+  attempts         ExamAttempt[]
+
+  @@map("users")
+}
+
+model Exam {
+  id              String     @id @default(uuid()) @db.Uuid
+  title           String     @db.VarChar(255)
+  description     String?    @db.Text
+  durationSeconds Int        @map("duration_seconds")
+  startsAt        DateTime?  @map("starts_at") @db.Timestamptz(6)
+  endsAt          DateTime?  @map("ends_at") @db.Timestamptz(6)
+  status          ExamStatus @default(DRAFT)
+  createdBy       String     @map("created_by") @db.Uuid
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  creator   User           @relation("ExamCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  questions ExamQuestion[]
+  attempts  ExamAttempt[]
+
+  @@index([createdBy, status])
+  @@map("exams")
+}
+
+model Question {
+  id                String   @id @default(uuid()) @db.Uuid
+  title             String   @db.VarChar(255)
+  description       String   @db.Text
+  constraints       String?  @db.Text
+  inputDescription  String?  @map("input_description") @db.Text
+  outputDescription String?  @map("output_description") @db.Text
+  starterCode       String?  @map("starter_code") @db.Text
+  defaultLanguage   String?  @map("default_language") @db.VarChar(50)
+  timeLimitMs       Int      @map("time_limit_ms")
+  memoryLimitMb     Int?     @map("memory_limit_mb")
+  createdBy         String   @map("created_by") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  creator   User           @relation("QuestionCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  examLinks ExamQuestion[]
+  testCases TestCase[]
+
+  @@map("questions")
+}
+
+model ExamQuestion {
+  id         String   @id @default(uuid()) @db.Uuid
+  examId     String   @map("exam_id") @db.Uuid
+  questionId String   @map("question_id") @db.Uuid
+  position   Int
+  points     Decimal  @db.Decimal(10, 2)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  exam        Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)
+  question    Question     @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  submissions Submission[]
+
+  @@unique([id, examId])
+  @@unique([examId, questionId])
+  @@unique([examId, position])
+  @@map("exam_questions")
+}
+
+enum TestCaseVisibility {
+  PUBLIC
+  HIDDEN
+
+  @@map("test_case_visibility")
+}
+
+enum AttemptStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  SUBMITTED
+  AUTO_SUBMITTED
+  DISQUALIFIED
+  EXPIRED
+
+  @@map("attempt_status")
+}
+
+model TestCase {
+  id             String             @id @default(uuid()) @db.Uuid
+  questionId     String             @map("question_id") @db.Uuid
+  inputData      String             @map("input_data") @db.Text
+  expectedOutput String             @map("expected_output") @db.Text
+  visibility     TestCaseVisibility
+  weight         Decimal            @default(1) @db.Decimal(10, 2)
+  position       Int
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, position])
+  @@map("test_cases")
+}
+
+model ExamAttempt {
+  id          String        @id @default(uuid()) @db.Uuid
+  examId      String        @map("exam_id") @db.Uuid
+  studentId   String        @map("student_id") @db.Uuid
+  startedAt   DateTime?     @map("started_at") @db.Timestamptz(6)
+  expiresAt   DateTime?     @map("expires_at") @db.Timestamptz(6)
+  submittedAt DateTime?     @map("submitted_at") @db.Timestamptz(6)
+  status      AttemptStatus @default(NOT_STARTED)
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  exam             Exam              @relation(fields: [examId], references: [id], onDelete: Restrict)
+  student          User              @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  submissions      Submission[]
+  proctoringEvents ProctoringEvent[]
+
+  @@unique([id, examId])
+  @@unique([examId, studentId])
+  @@index([examId, status])
+  @@index([studentId, createdAt])
+  @@map("exam_attempts")
+}
+
+model Submission {
+  id             String   @id @default(uuid()) @db.Uuid
+  attemptId      String   @map("attempt_id") @db.Uuid
+  examQuestionId String   @map("exam_question_id") @db.Uuid
+  examId         String   @map("exam_id") @db.Uuid
+  code           String   @db.Text
+  language       String   @db.VarChar(50)
+  submittedAt    DateTime @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  attempt ExamAttempt @relation(
+  fields: [attemptId, examId],
+  references: [id, examId],
+  onDelete Restrict
+  )
+
+  examQuestion ExamQuestion @relation(
+  fields: [examQuestionId, examId],
+  references: [id, examId],
+  onDelete Restrict
+  )
+
+  results ExecutionResult[]
+
+  @@index([attemptId, examQuestionId, submittedAt])
+  @@map("submissions")
+}
+
+enum ExecutionStatus {
+  QUEUED
+  RUNNING
+  ACCEPTED
+  WRONG_ANSWER
+  TIME_LIMIT_EXCEEDED
+  MEMORY_LIMIT_EXCEEDED
+  COMPILATION_ERROR
+  RUNTIME_ERROR
+  INTERNAL_ERROR
+
+  @@map("execution_status")
+}
+
+enum ProctoringEventType {
+  TAB_HIDDEN
+  FULLSCREEN_EXIT
+  WINDOW_BLUR
+  COPY_ATTEMPT
+  PASTE_ATTEMPT
+  CONTEXT_MENU
+
+  @@map("proctoring_event_type")
+}
+
+model ExecutionResult {
+  id              String          @id @default(uuid()) @db.Uuid
+  submissionId    String          @map("submission_id") @db.Uuid
+  status          ExecutionStatus
+  score           Decimal?        @db.Decimal(10, 2)
+  totalTests      Int?            @map("total_tests")
+  passedTests     Int?            @map("passed_tests")
+  executionTimeMs Int?            @map("execution_time_ms")
+  memoryUsedKb    BigInt?         @map("memory_used_kb")
+  judgeReference  String?         @map("judge_reference") @db.VarChar(255)
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt     DateTime?       @map("completed_at") @db.Timestamptz(6)
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Restrict)
+
+  @@index([submissionId, createdAt])
+  @@map("execution_results")
+}
+
+model ProctoringEvent {
+  id         String              @id @default(uuid()) @db.Uuid
+  attemptId  String              @map("attempt_id") @db.Uuid
+  type       ProctoringEventType
+  occurredAt DateTime            @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  metadata   Json?               @db.JsonB
+
+  attempt ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@index([attemptId, occurredAt])
+  @@map("proctoring_events")
+}
