@@ -167,17 +167,8 @@ model Submission {
   submittedAt    DateTime @default(now()) @map("submitted_at") @db.Timestamptz(6)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  attempt ExamAttempt @relation(
-  fields: [attemptId, examId],
-  references: [id, examId],
-  onDelete Restrict
-  )
-
-  examQuestion ExamQuestion @relation(
-  fields: [examQuestionId, examId],
-  references: [id, examId],
-  onDelete Restrict
-  )
+  attempt      ExamAttempt   @relation(fields: [attemptId, examId], references: [id, examId], onDelete: Restrict)
+  examQuestion ExamQuestion  @relation(fields: [examQuestionId, examId], references: [id, examId], onDelete: Restrict)
 
   results ExecutionResult[]
 
